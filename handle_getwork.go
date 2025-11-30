@@ -126,7 +126,7 @@ func readjobsGw(clGw *getwork.Getwork) {
 		log.Debugf("blob public key %x", util.BlockMiner(tmpl).GetPublickey())
 
 		go sendJobToWebsocket(diff, tmpl)
-		go stratumServer.sendJobs(diff, bm)
+		go stratumServer.sendJobs()
 	}
 }
 

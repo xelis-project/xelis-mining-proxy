@@ -286,7 +286,7 @@ func handleStratumConn(_ *StratumServer, c *StratumConn) {
 			}
 
 			// send actual job
-			SendStratumJob(c, job.Diff, job.Blob)
+			SendStratumJob(c, job)
 
 			c.Unlock()
 
@@ -417,7 +417,7 @@ func GenerateJobID() [16]byte {
 	return [16]byte(b)
 }
 
-func (c *StratumConn) SendJob(bm util.BlockMiner, jobid [16]byte) error {
+func (c *StratumConn) SendJob(bm util.BlockMiner, jobid [16]byte, job Job) error {
 	c.LastOutID++
 
 	workhash := bm.GetWorkhash()
@@ -441,6 +441,8 @@ func (c *StratumConn) SendJob(bm util.BlockMiner, jobid [16]byte) error {
 
 	c.LastOutID++
 
+	algorithm := strings.ReplaceAll(job.Algorithm, "v", "")
+
 	return c.WriteJSON(stratum.RequestOut{
 		Id:     c.LastOutID,
 		Method: "mining.notify",
@@ -448,13 +450,13 @@ func (c *StratumConn) SendJob(bm util.BlockMiner, jobid [16]byte) error {
 			hex.EncodeToString(jobid[:]),
 			timeStr,
 			hex.EncodeToString(workhash[:]),
-			"xel/0",
+			algorithm,
 			true,
 		},
 	})
 }
 
-func SendStratumJob(v *StratumConn, blockDiff uint64, blob util.BlockMiner) {
+func SendStratumJob(v *StratumConn, job Job) {
 	log.Debug("SendJob to Stratum miner with IP", v.Conn.RemoteAddr().String())
 
 	jobId := make([]byte, 16)
@@ -465,6 +467,7 @@ func SendStratumJob(v *StratumConn, blockDiff uint64, blob util.BlockMiner) {
 	}
 
 	// generate a random extra nonce for the miner
+	blob := job.Blob
 	blob.GenerateExtraNonce()
 
 	log.Debugf("SendStratumJob blob %x", blob)
@@ -479,15 +482,14 @@ func SendStratumJob(v *StratumConn, blockDiff uint64, blob util.BlockMiner) {
 		v.Jobs = v.Jobs[1:]
 	}
 
-	log.Debugf("sending job to Stratum miner with IP %s (job id %x) ok", v.IP,
-		jobId)
+	log.Debugf("sending job to Stratum miner with IP %s (job id %x) ok", v.IP, jobId)
 
-	v.SendDifficulty(blockDiff)
-	v.SendJob(blob, [16]byte(jobId))
+	v.SendDifficulty(job.Diff)
+	v.SendJob(blob, [16]byte(jobId), job)
 }
 
 // sends a job to all the websockets, and removes old websockets
-func (s *StratumServer) sendJobs(diff uint64, blob util.BlockMiner) {
+func (s *StratumServer) sendJobs() {
 	s.Lock()
 	log.Debug("StratumServer sendJobs: num sockets:", len(s.Conns))
 
@@ -531,7 +533,7 @@ func (s *StratumServer) sendJobs(diff uint64, blob util.BlockMiner) {
 			c.Lock()
 			defer c.Unlock()
 
-			SendStratumJob(c, diff, blob)
+			SendStratumJob(c, curJob)
 
 			log.Debug("StratumServer sendJobs: done, sent to IP", c.IP)
 		}()
