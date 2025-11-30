@@ -58,18 +58,10 @@ func (b *BlockMiner) SetTimestamp(t uint64) {
 	b[39] = tb[7]
 }
 func (b *BlockMiner) SetNonce(n uint64) {
-	tb := make([]byte, 8)
-	binary.BigEndian.PutUint64(tb, n)
+	var tb [8]byte
+	binary.BigEndian.PutUint64(tb[:], n)
 
-	// update the nonce
-	b[40] = tb[0]
-	b[41] = tb[1]
-	b[42] = tb[2]
-	b[43] = tb[3]
-	b[44] = tb[4]
-	b[45] = tb[5]
-	b[46] = tb[6]
-	b[47] = tb[7]
+	b.SetNonceBytes(tb)
 }
 func (b *BlockMiner) SetNonceBytes(tb [8]byte) {
 	b[40] = tb[0]
@@ -145,10 +137,7 @@ func (b BlockMiner) GetPublickey() [32]byte {
 }
 
 func (b BlockMiner) GetBlob() []byte {
-	wh := b.GetWorkhash()
-	xn := b.GetExtraNonce()
-	pk := b.GetPublickey()
-	return append(append(wh[:], xn[:]...), pk[:]...)
+	return b[:]
 }
 
 func (b *BlockMiner) Display() string {

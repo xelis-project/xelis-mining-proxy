@@ -213,11 +213,9 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if len(minerBlob) != util.BLOCKMINER_LENGTH {
-			log.Info()
+			log.Warnf("miner blob %x length is invalid", minerBlob)
 			continue
 		}
-
-		blob := util.BlockMiner(minerBlob)
 
 		// send dummy "accepted" reply
 		c.Lock()
@@ -228,8 +226,6 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// send share to pool
-		sharesToPool <- util.PacketC2S_Submit{
-			BlockMiner: blob,
-		}
+		sharesToPool <- Share(minerWork)
 	}
 }

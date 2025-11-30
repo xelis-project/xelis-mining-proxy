@@ -13,8 +13,12 @@ import (
 
 // Getwork client
 
+// Share represents a share to be sent to the pool
+// it is a minerWork hex encoded string
+type Share string
+
 var clGw *getwork.Getwork
-var sharesToPool chan util.PacketC2S_Submit
+var sharesToPool chan Share
 
 func getworkClientHandler() {
 	func() {
@@ -29,7 +33,7 @@ func getworkClientHandler() {
 	for {
 		log.Info("Starting a new connection to the pool")
 
-		sharesToPool = make(chan util.PacketC2S_Submit, 1)
+		sharesToPool = make(chan Share, 1)
 
 		var err error
 		clGw, err = getwork.NewGetwork(Cfg.PoolUrl+"/getwork", Cfg.WalletAddress, "xelis-mining-proxy v"+VERSION)
@@ -64,12 +68,9 @@ func recvSharesGw(clGw *getwork.Getwork) {
 
 		log.Info("Share found, submitting to pool")
 
-		bm := share.BlockMiner
+		log.Debugf("%x", share)
 
-		log.Debugf("%x", bm)
-		log.Debug(bm.String())
-
-		err := clGw.SubmitBlock(share.BlockMiner.String())
+		err := clGw.SubmitBlock(string(share))
 		if err != nil {
 			log.Err("failed to submit share to pool:", err)
 			clGw.Close()

@@ -334,19 +334,22 @@ func handleStratumConn(_ *StratumServer, c *StratumConn) {
 			jobid := [16]byte(jid)
 
 			// get the BlockMiner for the current job
-			bm := util.BlockMiner{}
+			var bm util.BlockMiner
+			found := false
 			for _, v := range c.Jobs {
 				if v.JobID == jobid {
 					log.Debugf("job id %x matches", jobid)
 					bm = v.BlockMiner
 					log.Debugf("blockMiner is %x", bm)
+					found = true
 
 					// the bug is before this
 					break
 				}
 				log.Debugf("job id %x doesn't match with %x", jobid, v.JobID)
 			}
-			if bm.GetExtraNonce() == [32]byte{} {
+
+			if !found {
 				log.Warnf("unknown job id %x, share is probably stale", jobid)
 
 				c.WriteJSON(stratum.ResponseOut{
@@ -360,6 +363,7 @@ func handleStratumConn(_ *StratumServer, c *StratumConn) {
 
 				return
 			}
+
 			bm.SetNonceBytes([8]byte(nonceBin))
 
 			go func() {
@@ -372,9 +376,14 @@ func handleStratumConn(_ *StratumServer, c *StratumConn) {
 				})
 			}()
 
-			sharesToPool <- util.PacketC2S_Submit{
-				BlockMiner: bm,
-			}
+			encoded := hex.EncodeToString(bm.GetBlob())
+
+			log.Info("Stratum miner with IP", c.IP, "found a share for job id", jobid, "nonce", bm.GetNonce())
+
+			log.Debugf("share blob %x", encoded)
+
+			// send share to pool
+			sharesToPool <- Share(encoded)
 		default:
 			if req.Method != "mining.pong" {
 				log.Warn("Unknown Stratum method", req.Method)
