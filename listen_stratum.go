@@ -176,13 +176,6 @@ func handleStratumConn(_ *StratumServer, c *StratumConn) {
 			return
 		}
 
-		if !c.Ready && !(req.Method == "mining.subscribe" || req.Method == "mining.authorize") {
-			log.Warn("Stratum miner with IP", c.IP, "not subscribed yet, closing connection")
-			c.Close()
-			c.Alive = false
-			return
-		}
-
 		switch req.Method {
 		case "mining.subscribe":
 			params := []any{}
