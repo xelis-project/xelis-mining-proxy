@@ -13,9 +13,12 @@ const VERSION = "1.0.1"
 
 // Job is a fast & efficient struct used for storing a job in memory
 type Job struct {
-	Blob   util.BlockMiner
-	Diff   uint64
-	Target [32]byte
+	Blob       util.BlockMiner
+	Diff       uint64
+	Target     [32]byte
+	Height     uint64
+	TopoHeight uint64
+	Algorithm  string
 }
 
 var stratumServer = &StratumServer{

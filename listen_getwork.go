@@ -11,6 +11,7 @@ import (
 	"xelis-mining-proxy/util"
 
 	"github.com/gorilla/websocket"
+	"github.com/xelis-project/xelis-go-sdk/getwork"
 )
 
 // Getwork server
@@ -93,10 +94,12 @@ func sendJobToWebsocket(diff uint64, bl []byte) {
 			blob.GenerateExtraNonce()
 
 			err := c.WriteJSON(map[string]any{
-				"new_job": BlockTemplate{
+				"new_job": getwork.MinerWork{
 					Difficulty: strconv.FormatUint(diff, 10),
-					TopoHeight: 0,
-					Template:   hex.EncodeToString(blob[:]),
+					MinerWork:  hex.EncodeToString(blob[:]),
+					Algorithm:  curJob.Algorithm,
+					Height:     curJob.Height,
+					TopoHeight: curJob.TopoHeight,
 				},
 			})
 
@@ -126,14 +129,6 @@ func listenGetwork() {
 	log.Info("Getwork server listening on port", Cfg.GetworkBindPort)
 
 	log.Fatal(http.ListenAndServe(ip, nil))
-}
-
-type BlockTemplate struct {
-	Difficulty string `json:"difficulty"`
-	Height     uint64 `json:"height"`
-	TopoHeight uint64 `json:"topoheight"`
-	Template   string `json:"template"`
-	Algorithm  string `json:"algorithm"`
 }
 
 func wsHandler(w http.ResponseWriter, r *http.Request) {
@@ -167,10 +162,12 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	c.Lock()
 	err = c.WriteJSON(map[string]any{
-		"new_job": BlockTemplate{
+		"new_job": getwork.MinerWork{
 			Difficulty: diff,
-			TopoHeight: 0,
-			Template:   hex.EncodeToString(blob[:]),
+			MinerWork:  hex.EncodeToString(blob[:]),
+			Algorithm:  curJob.Algorithm,
+			Height:     curJob.Height,
+			TopoHeight: curJob.TopoHeight,
 		},
 	})
 	c.Unlock()

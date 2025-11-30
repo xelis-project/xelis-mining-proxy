@@ -110,13 +110,16 @@ func readjobsGw(clGw *getwork.Getwork) {
 
 		mutCurJob.Lock()
 		curJob = Job{
-			Blob:   bm,
-			Diff:   diff,
-			Target: util.GetTargetBytes(diff),
+			Blob:       bm,
+			Diff:       diff,
+			Target:     util.GetTargetBytes(diff),
+			Algorithm:  job.Algorithm,
+			Height:     job.Height,
+			TopoHeight: job.TopoHeight,
 		}
 		mutCurJob.Unlock()
 
-		log.Infof("new job with difficulty %d", diff)
+		log.Infof("new job with difficulty %d for algorithm %s", diff, job.Algorithm)
 		log.Debugf("new job: diff %d, blob %x", diff, tmpl)
 
 		log.Debugf("blob public key %x", util.BlockMiner(tmpl).GetPublickey())
