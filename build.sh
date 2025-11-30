@@ -1,20 +1,39 @@
-# make sure you install xgo using:
-# go get src.techknowlogick.com/xgo
+#!/usr/bin/env bash
+set -euo pipefail
 
-rm build -r
+PROJECT="xelis-mining-proxy"
+GOFLAGS=("-trimpath" "-ldflags=-s -w")
 
-mkdir build
-cp LICENSE.txt ./build/
-cp README.md ./build/
-cd build/
+rm -rf build
+mkdir -p build
+cp LICENSE.txt README.md build/
+cd build
 
-xgo -trimpath -ldflags="-s -w" --targets linux/amd64,windows-6.1/amd64,darwin-10.12/amd64 ..
+build() {
+    local GOOS=$1
+    local GOARCH=$2
+    local EXT=""
 
-# rename windows file
-mv xelis-mining-proxy-windows-6.1-amd64.exe xelis-mining-proxy-windows-amd64.exe
-# rename darwin file
-mv xelis-mining-proxy-darwin-10.12-amd64 xelis-mining-proxy-darwin-amd64
+    [[ "$GOOS" == "windows" ]] && EXT=".exe"
 
-GZIP=-9 tar --xz -cf xelis-mining-proxy-linux-amd64.tar.xz xelis-mining-proxy-linux-amd64 LICENSE.txt README.md
-GZIP=-9 tar --xz -cf xelis-mining-proxy-darwin-amd64.tar.xz xelis-mining-proxy-darwin-amd64 LICENSE.txt README.md
-zip -9 xelis-mining-proxy-windows-amd64.zip xelis-mining-proxy-windows-amd64.exe LICENSE.txt README.md
+    echo "==> Building $GOOS/$GOARCH"
+
+    env CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH \
+        go build $GOFLAGS -o "${PROJECT}-${GOOS}-${GOARCH}${EXT}" ..
+}
+
+build linux amd64
+build windows amd64
+build darwin amd64
+
+# Package results
+tar -cJf "${PROJECT}-linux-amd64.tar.xz" \
+  "${PROJECT}-linux-amd64" LICENSE.txt README.md
+
+tar -cJf "${PROJECT}-darwin-amd64.tar.xz" \
+  "${PROJECT}-darwin-amd64" LICENSE.txt README.md
+
+zip -9 "${PROJECT}-windows-amd64.zip" \
+  "${PROJECT}-windows-amd64.exe" LICENSE.txt README.md
+
+echo "==> Done."
