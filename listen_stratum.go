@@ -176,7 +176,7 @@ func handleStratumConn(_ *StratumServer, c *StratumConn) {
 			return
 		}
 
-		if !c.Ready && req.Method != "mining.subscribe" {
+		if !c.Ready && !(req.Method == "mining.subscribe" || req.Method == "mining.authorize") {
 			log.Warn("Stratum miner with IP", c.IP, "not subscribed yet, closing connection")
 			c.Close()
 			c.Alive = false
@@ -185,7 +185,7 @@ func handleStratumConn(_ *StratumServer, c *StratumConn) {
 
 		switch req.Method {
 		case "mining.subscribe":
-			params := []string{}
+			params := []any{}
 			err := json.Unmarshal(req.Params, &params)
 			if err != nil {
 				log.Warn(err)
@@ -194,7 +194,7 @@ func handleStratumConn(_ *StratumServer, c *StratumConn) {
 				return
 			}
 
-			c.Agent = params[0]
+			c.Agent = params[0].(string)
 
 			log.Info("Stratum miner with agent", c.Agent, "and IP", c.IP, "connected")
 
@@ -272,6 +272,7 @@ func handleStratumConn(_ *StratumServer, c *StratumConn) {
 			wall := splAddr[0]
 
 			log.Info("Stratum miner with address", wall, "IP", c.IP, "connected")
+			c.Alive = true
 
 			// send the job
 			mutCurJob.RLock()
