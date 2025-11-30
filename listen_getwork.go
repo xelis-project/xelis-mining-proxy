@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"sync"
 	"xelis-mining-proxy/log"
-	"xelis-mining-proxy/xelisutil"
+	"xelis-mining-proxy/util"
 
 	"github.com/gorilla/websocket"
 )
@@ -18,11 +18,12 @@ import (
 var upgrader = websocket.Upgrader{} // use default options
 
 func fmtMessageType(mt int) string {
-	if mt == websocket.BinaryMessage {
+	switch mt {
+	case websocket.BinaryMessage:
 		return "binary"
-	} else if mt == websocket.TextMessage {
+	case websocket.TextMessage:
 		return "text"
-	} else {
+	default:
 		return "Unknown Message Type"
 	}
 }
@@ -88,7 +89,7 @@ func sendJobToWebsocket(diff uint64, bl []byte) {
 			c.Lock()
 			defer c.Unlock()
 
-			blob := xelisutil.BlockMiner(bl)
+			blob := util.BlockMiner(bl)
 			blob.GenerateExtraNonce()
 
 			err := c.WriteJSON(map[string]any{
@@ -132,6 +133,7 @@ type BlockTemplate struct {
 	Height     uint64 `json:"height"`
 	TopoHeight uint64 `json:"topoheight"`
 	Template   string `json:"template"`
+	Algorithm  string `json:"algorithm"`
 }
 
 func wsHandler(w http.ResponseWriter, r *http.Request) {
@@ -213,12 +215,12 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		if len(minerBlob) != xelisutil.BLOCKMINER_LENGTH {
+		if len(minerBlob) != util.BLOCKMINER_LENGTH {
 			log.Info()
 			continue
 		}
 
-		blob := xelisutil.BlockMiner(minerBlob)
+		blob := util.BlockMiner(minerBlob)
 
 		// send dummy "accepted" reply
 		c.Lock()
@@ -229,7 +231,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// send share to pool
-		sharesToPool <- xelisutil.PacketC2S_Submit{
+		sharesToPool <- util.PacketC2S_Submit{
 			BlockMiner: blob,
 		}
 	}

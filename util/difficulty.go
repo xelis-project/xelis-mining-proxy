@@ -1,9 +1,8 @@
-package xelisutil
+package util
 
 import (
 	"bytes"
 	"math/big"
-	"xelis-mining-proxy/util"
 )
 
 var maxBigInt *big.Int
@@ -22,7 +21,7 @@ func GetTarget(diff uint64) *big.Int {
 	}
 
 	diffBigInt := big.NewInt(0)
-	diffBigInt = diffBigInt.SetBytes(util.Uint64ToBigEndian(diff))
+	diffBigInt = diffBigInt.SetBytes(Uint64ToBigEndian(diff))
 
 	return diffBigInt.Div(maxBigInt, diffBigInt)
 }

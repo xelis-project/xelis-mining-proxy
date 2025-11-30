@@ -1,4 +1,4 @@
-package xelisutil
+package util
 
 import (
 	"github.com/zeebo/blake3"

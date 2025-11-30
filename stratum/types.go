@@ -1,6 +1,8 @@
 package stratum
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 type RequestIn struct {
 	Id     uint32          `json:"id"`

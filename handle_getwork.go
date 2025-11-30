@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 	"xelis-mining-proxy/log"
-	"xelis-mining-proxy/xelisutil"
+	"xelis-mining-proxy/util"
 
 	"github.com/xelis-project/xelis-go-sdk/getwork"
 )
@@ -14,7 +14,7 @@ import (
 // Getwork client
 
 var clGw *getwork.Getwork
-var sharesToPool chan xelisutil.PacketC2S_Submit
+var sharesToPool chan util.PacketC2S_Submit
 
 func getworkClientHandler() {
 	func() {
@@ -29,7 +29,7 @@ func getworkClientHandler() {
 	for {
 		log.Info("Starting a new connection to the pool")
 
-		sharesToPool = make(chan xelisutil.PacketC2S_Submit, 1)
+		sharesToPool = make(chan util.PacketC2S_Submit, 1)
 
 		var err error
 		clGw, err = getwork.NewGetwork(Cfg.PoolUrl+"/getwork", Cfg.WalletAddress, "xelis-mining-proxy v"+VERSION)
@@ -98,7 +98,7 @@ func readjobsGw(clGw *getwork.Getwork) {
 			return
 		}
 
-		if len(tmpl) != xelisutil.BLOCKMINER_LENGTH {
+		if len(tmpl) != util.BLOCKMINER_LENGTH {
 			log.Errf("template %x length is invalid", tmpl)
 			clGw.Close()
 			return
@@ -106,20 +106,20 @@ func readjobsGw(clGw *getwork.Getwork) {
 
 		log.Debug("new job from GetWork")
 
-		bm := xelisutil.BlockMiner(tmpl)
+		bm := util.BlockMiner(tmpl)
 
 		mutCurJob.Lock()
 		curJob = Job{
 			Blob:   bm,
 			Diff:   diff,
-			Target: xelisutil.GetTargetBytes(diff),
+			Target: util.GetTargetBytes(diff),
 		}
 		mutCurJob.Unlock()
 
 		log.Infof("new job with difficulty %d", diff)
 		log.Debugf("new job: diff %d, blob %x", diff, tmpl)
 
-		log.Debugf("blob public key %x", xelisutil.BlockMiner(tmpl).GetPublickey())
+		log.Debugf("blob public key %x", util.BlockMiner(tmpl).GetPublickey())
 
 		go sendJobToWebsocket(diff, tmpl)
 		go stratumServer.sendJobs(diff, bm)

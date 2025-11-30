@@ -6,14 +6,14 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"xelis-mining-proxy/xelisutil"
+	"xelis-mining-proxy/util"
 )
 
-const VERSION = "1.0.0"
+const VERSION = "1.0.1"
 
 // Job is a fast & efficient struct used for storing a job in memory
 type Job struct {
-	Blob   xelisutil.BlockMiner
+	Blob   util.BlockMiner
 	Diff   uint64
 	Target [32]byte
 }

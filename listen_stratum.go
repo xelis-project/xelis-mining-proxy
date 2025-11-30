@@ -15,7 +15,6 @@ import (
 	"xelis-mining-proxy/log"
 	"xelis-mining-proxy/stratum"
 	"xelis-mining-proxy/util"
-	"xelis-mining-proxy/xelisutil"
 )
 
 // Stratum server
@@ -24,7 +23,7 @@ const JOBS_PAST = 5
 
 type PastJob struct {
 	JobID      [16]byte
-	BlockMiner xelisutil.BlockMiner
+	BlockMiner util.BlockMiner
 }
 
 type StratumServer struct {
@@ -39,6 +38,8 @@ type StratumConn struct {
 	IP        string
 	LastOutID uint32
 	Jobs      []PastJob
+	Agent     string
+	Ready     bool
 
 	sync.RWMutex
 }
@@ -135,8 +136,6 @@ func GenerateID() [16]byte {
 func handleStratumConn(_ *StratumServer, c *StratumConn) {
 	rdr := bufio.NewReader(c.Conn)
 
-	// go sendPingPackets(s, Conn)
-
 	numMessages := 0
 
 	for {
@@ -177,11 +176,38 @@ func handleStratumConn(_ *StratumServer, c *StratumConn) {
 			return
 		}
 
+		if !c.Ready && req.Method != "mining.subscribe" {
+			log.Warn("Stratum miner with IP", c.IP, "not subscribed yet, closing connection")
+			c.Close()
+			c.Alive = false
+			return
+		}
+
 		switch req.Method {
 		case "mining.subscribe":
+			params := []string{}
+			err := json.Unmarshal(req.Params, &params)
+			if err != nil {
+				log.Warn(err)
+				c.Close()
+				c.Alive = false
+				return
+			}
+
+			c.Agent = params[0]
+
+			log.Info("Stratum miner with agent", c.Agent, "and IP", c.IP, "connected")
+
 			mutCurJob.RLock()
 			job := curJob
 			mutCurJob.RUnlock()
+
+			if len(params) < 1 {
+				log.Warn("less than 1 param")
+				c.Close()
+				c.Alive = false
+				return
+			}
 
 			// generate a random extra nonce for the miner
 			job.Blob.GenerateExtraNonce()
@@ -213,6 +239,7 @@ func handleStratumConn(_ *StratumServer, c *StratumConn) {
 					hex.EncodeToString(pubkey[:]), // public key
 				},
 			})
+
 			if err != nil {
 				log.Warn(err)
 				c.Alive = false
@@ -313,7 +340,7 @@ func handleStratumConn(_ *StratumServer, c *StratumConn) {
 			jobid := [16]byte(jid)
 
 			// get the BlockMiner for the current job
-			bm := xelisutil.BlockMiner{}
+			bm := util.BlockMiner{}
 			for _, v := range c.Jobs {
 				if v.JobID == jobid {
 					log.Debugf("job id %x matches", jobid)
@@ -351,7 +378,7 @@ func handleStratumConn(_ *StratumServer, c *StratumConn) {
 				})
 			}()
 
-			sharesToPool <- xelisutil.PacketC2S_Submit{
+			sharesToPool <- util.PacketC2S_Submit{
 				BlockMiner: bm,
 			}
 		default:
@@ -387,7 +414,7 @@ func GenerateJobID() [16]byte {
 	return [16]byte(b)
 }
 
-func (c *StratumConn) SendJob(bm xelisutil.BlockMiner, jobid [16]byte) error {
+func (c *StratumConn) SendJob(bm util.BlockMiner, jobid [16]byte) error {
 	c.LastOutID++
 
 	workhash := bm.GetWorkhash()
@@ -424,7 +451,7 @@ func (c *StratumConn) SendJob(bm xelisutil.BlockMiner, jobid [16]byte) error {
 	})
 }
 
-func SendStratumJob(v *StratumConn, blockDiff uint64, blob xelisutil.BlockMiner) {
+func SendStratumJob(v *StratumConn, blockDiff uint64, blob util.BlockMiner) {
 	log.Debug("SendJob to Stratum miner with IP", v.Conn.RemoteAddr().String())
 
 	jobId := make([]byte, 16)
@@ -457,7 +484,7 @@ func SendStratumJob(v *StratumConn, blockDiff uint64, blob xelisutil.BlockMiner)
 }
 
 // sends a job to all the websockets, and removes old websockets
-func (s *StratumServer) sendJobs(diff uint64, blob xelisutil.BlockMiner) {
+func (s *StratumServer) sendJobs(diff uint64, blob util.BlockMiner) {
 	s.Lock()
 	log.Debug("StratumServer sendJobs: num sockets:", len(s.Conns))
 
