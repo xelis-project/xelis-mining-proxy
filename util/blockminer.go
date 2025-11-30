@@ -39,7 +39,6 @@ func NewBlockMinerFromBlob(blob []byte) (BlockMiner, error) {
 	}
 
 	return NewBlockMiner([32]byte(blob[0:32]), [32]byte(blob[32:32*2]), [32]byte(blob[32*2:32*3])), nil
-
 }
 
 // SETTER methods
@@ -137,7 +136,15 @@ func (b BlockMiner) GetPublickey() [32]byte {
 }
 
 func (b BlockMiner) GetBlob() []byte {
-	return b[:]
+	var blob [96]byte
+	work_hash := b.GetWorkhash()
+	extra_nonce := b.GetExtraNonce()
+	public_key := b.GetPublickey()
+
+	copy(blob[0:32], work_hash[:])
+	copy(blob[32:64], extra_nonce[:])
+	copy(blob[64:96], public_key[:])
+	return blob[:]
 }
 
 func (b *BlockMiner) Display() string {

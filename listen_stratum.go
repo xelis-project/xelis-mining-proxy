@@ -376,7 +376,7 @@ func handleStratumConn(_ *StratumServer, c *StratumConn) {
 				})
 			}()
 
-			encoded := hex.EncodeToString(bm.GetBlob())
+			encoded := bm.String()
 
 			log.Info("Stratum miner with IP", c.IP, "found a share for job id", jobid, "nonce", bm.GetNonce())
 
