@@ -6,6 +6,7 @@ import (
 	"flag"
 	"net/http"
 	"strconv"
+	"time"
 	"sync"
 	"xelis-mining-proxy/log"
 	"xelis-mining-proxy/util"
@@ -90,13 +91,10 @@ func sendJobToWebsocket(diff uint64, bl []byte) {
 			c.Lock()
 			defer c.Unlock()
 
-			blob := util.BlockMiner(bl)
-			blob.GenerateExtraNonce()
-
 			err := c.WriteJSON(map[string]any{
 				"new_job": getwork.MinerWork{
 					Difficulty: strconv.FormatUint(diff, 10),
-					MinerWork:  hex.EncodeToString(blob[:]),
+					MinerWork:  hex.EncodeToString(bl[:]),
 					Algorithm:  curJob.Algorithm,
 					Height:     curJob.Height,
 					TopoHeight: curJob.TopoHeight,
@@ -217,15 +215,31 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// send dummy "accepted" reply
-		c.Lock()
-		err = c.conn.WriteMessage(websocket.TextMessage, []byte(`"block_accepted"`))
-		c.Unlock()
+		// Extract share ID from the minerBlob (BlockMiner structure)
+		shareID, err := ExtractShareID(minerBlob)
 		if err != nil {
-			log.Err("failed to send dummy accept reply:", err)
+			log.Err("failed to extract share ID:", err)
+			continue
 		}
 
-		// send share to pool
-		sharesToPool <- Share(minerWork)
+		log.Infof("Getwork miner %s found share", c.IP())
+
+		// Create pending share to await pool response
+		responseChan := make(chan ShareResult, 1)
+		pending := &PendingShare{
+			GetworkConn:  c,
+			SubmittedAt:  time.Now(),
+			ResponseChan: responseChan,
+		}
+
+		// Register pending share and start response waiter
+		shareTracker.AddPendingShare(shareID, pending)
+		shareTracker.StartResponseWaiter(shareID, pending)
+
+		// send share to pool with ID for correlation
+		sharesToPool <- Share{
+			ID:      shareID,
+			Encoded: minerWork,
+		}
 	}
 }
