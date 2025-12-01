@@ -22,8 +22,9 @@ import (
 const JOBS_PAST = 5
 
 type PastJob struct {
-	JobID      [16]byte
-	BlockMiner util.BlockMiner
+	JobID              [16]byte
+	BlockMiner         util.BlockMiner // BlockMiner with modified extra_nonce for this miner
+	OriginalExtraNonce [32]byte        // Original extra_nonce from pool (must be restored when submitting)
 }
 
 type StratumServer struct {
@@ -40,6 +41,9 @@ type StratumConn struct {
 	Jobs      []PastJob
 	Agent     string
 	Ready     bool
+
+	ExtraNonce    [32]byte
+	HasExtraNonce bool
 
 	sync.RWMutex
 }
@@ -202,13 +206,11 @@ func handleStratumConn(_ *StratumServer, c *StratumConn) {
 				return
 			}
 
-			// generate a random extra nonce for the miner
-			job.Blob.GenerateExtraNonce()
 			c.Lock()
 
 			log.Debugf("sending Stratum informations to miner with IP %s", c.IP)
 
-			xnonce := job.Blob.GetExtraNonce()
+			xnonce := c.ensureExtraNonce(job)
 			pubkey := job.Blob.GetPublickey()
 
 			if pubkey == [32]byte{} {
@@ -220,6 +222,7 @@ func handleStratumConn(_ *StratumServer, c *StratumConn) {
 					},
 				})
 				c.Close()
+				c.Unlock()
 				return
 			}
 
@@ -341,6 +344,7 @@ func handleStratumConn(_ *StratumServer, c *StratumConn) {
 					log.Debugf("job id %x matches", jobid)
 					bm = v.BlockMiner
 					log.Debugf("blockMiner is %x", bm)
+					log.Debugf("extra_nonce: %x", bm.GetExtraNonce())
 					found = true
 
 					// the bug is before this
@@ -366,24 +370,27 @@ func handleStratumConn(_ *StratumServer, c *StratumConn) {
 
 			bm.SetNonceBytes([8]byte(nonceBin))
 
-			go func() {
-				c.Lock()
-				defer c.Unlock()
+			// Generate unique share ID from extra nonce + nonce
+			shareID := GenerateShareID(bm.GetExtraNonce(), [8]byte(nonceBin))
 
-				c.WriteJSON(stratum.ResponseOut{
-					Id:     req.Id,
-					Result: true,
-				})
-			}()
+			// Create pending share to await pool response
+			responseChan := make(chan ShareResult, 1)
+			pending := &PendingShare{
+				RequestID:    req.Id,
+				StratumConn:  c,
+				SubmittedAt:  time.Now(),
+				ResponseChan: responseChan,
+			}
 
-			encoded := bm.String()
+			// Register pending share and start response waiter
+			shareTracker.AddPendingShare(shareID, pending)
+			shareTracker.StartResponseWaiter(shareID, pending)
 
-			log.Info("Stratum miner with IP", c.IP, "found a share for job id", jobid, "nonce", bm.GetNonce())
-
-			log.Debugf("share blob %x", encoded)
-
-			// send share to pool
-			sharesToPool <- Share(encoded)
+			// Submit blob to pool (extra_nonce unchanged from pool's template)
+			sharesToPool <- Share{
+				ID:      shareID,
+				Encoded: bm.String(),
+			}
 		default:
 			if req.Method != "mining.pong" {
 				log.Warn("Unknown Stratum method", req.Method)
@@ -456,6 +463,18 @@ func (c *StratumConn) SendJob(bm util.BlockMiner, jobid [16]byte, job Job) error
 	})
 }
 
+func (c *StratumConn) ensureExtraNonce(job Job) [32]byte {
+	if c.HasExtraNonce {
+		return c.ExtraNonce
+	}
+
+	bm := job.Blob
+	bm.GenerateExtraNonce()
+	c.ExtraNonce = bm.GetExtraNonce()
+	c.HasExtraNonce = true
+	return c.ExtraNonce
+}
+
 func SendStratumJob(v *StratumConn, job Job) {
 	log.Debug("SendJob to Stratum miner with IP", v.Conn.RemoteAddr().String())
 
@@ -466,17 +485,18 @@ func SendStratumJob(v *StratumConn, job Job) {
 		return
 	}
 
-	// generate a random extra nonce for the miner
 	blob := job.Blob
-	blob.GenerateExtraNonce()
+	xnonce := v.ensureExtraNonce(job)
+	blob.SetExtraNonce(xnonce)
 
 	log.Debugf("SendStratumJob blob %x", blob)
 	log.Debug("SendStratumJob:", blob.Display())
 
 	// add the job to miner's known past jobs
 	v.Jobs = append(v.Jobs, PastJob{
-		JobID:      [16]byte(jobId),
-		BlockMiner: blob,
+		JobID:              [16]byte(jobId),
+		BlockMiner:         blob,
+		OriginalExtraNonce: xnonce,
 	})
 	if len(v.Jobs) > JOBS_PAST {
 		v.Jobs = v.Jobs[1:]

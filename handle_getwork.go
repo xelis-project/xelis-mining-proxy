@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 	"xelis-mining-proxy/log"
+	"xelis-mining-proxy/stratum"
 	"xelis-mining-proxy/util"
 
 	"github.com/xelis-project/xelis-go-sdk/getwork"
@@ -14,11 +15,15 @@ import (
 // Getwork client
 
 // Share represents a share to be sent to the pool
-// it is a minerWork hex encoded string
-type Share string
+type Share struct {
+	ID      string // Unique identifier: hex(extra_nonce + nonce)
+	Encoded string // minerWork hex encoded string
+}
 
 var clGw *getwork.Getwork
 var sharesToPool chan Share
+var shareTracker *ShareTracker
+var pendingShareQueue chan string // FIFO queue of share IDs in submission order
 
 func getworkClientHandler() {
 	func() {
@@ -30,10 +35,14 @@ func getworkClientHandler() {
 
 	log.Debug("getwork pool url", Cfg.PoolUrl)
 
+	// Initialize share tracker with 30 second timeout
+	shareTracker = NewShareTracker(30 * time.Second)
+
 	for {
 		log.Info("Starting a new connection to the pool")
 
 		sharesToPool = make(chan Share, 1)
+		pendingShareQueue = make(chan string, 100) // Buffer for pending shares
 
 		var err error
 		clGw, err = getwork.NewGetwork(Cfg.PoolUrl+"/getwork", Cfg.WalletAddress, "xelis-mining-proxy v"+VERSION)
@@ -68,11 +77,27 @@ func recvSharesGw(clGw *getwork.Getwork) {
 
 		log.Info("Share found, submitting to pool")
 
-		log.Debugf("%x", share)
+		log.Debugf("Share ID: %s, Encoded: %s", share.ID, share.Encoded)
 
-		err := clGw.SubmitBlock(string(share))
+		// Add to FIFO queue BEFORE submitting to pool
+		pendingShareQueue <- share.ID
+
+		err := clGw.SubmitBlock(share.Encoded)
 		if err != nil {
 			log.Err("failed to submit share to pool:", err)
+
+			// On submit error, remove from queue and send rejection
+			<-pendingShareQueue // Remove from queue
+			if pending := shareTracker.GetPendingShare(share.ID); pending != nil {
+				pending.ResponseChan <- ShareResult{
+					Accepted: false,
+					Error: &stratum.Error{
+						Code:    -1,
+						Message: "failed to submit to pool",
+					},
+				}
+			}
+
 			clGw.Close()
 			return
 		}
@@ -132,22 +157,61 @@ func readjobsGw(clGw *getwork.Getwork) {
 
 func readAcceptGw() {
 	for {
-		accept, ok := <-clGw.AcceptedBlock
+		accepted, ok := <-clGw.AcceptedBlock
 		if !ok {
 			return
 		}
 
-		log.Info("share accepted:", accept)
+		log.Info("share accepted:", accepted)
+
+		// Get the next share ID from FIFO queue
+		shareID, ok := <-pendingShareQueue
+		if !ok {
+			log.Warn("pendingShareQueue closed")
+			return
+		}
+
+		// Send acceptance to the waiting miner
+		if pending := shareTracker.GetPendingShare(shareID); pending != nil {
+			log.Debugf("Matched accepted share %s to pending share", shareID)
+			pending.ResponseChan <- ShareResult{
+				Accepted: true,
+				Error:    nil,
+			}
+		} else {
+			log.Warnf("Received accept for unknown or expired share: %s", shareID)
+		}
 	}
 }
 
 func readRejectGw() {
 	for {
-		reject, ok := <-clGw.RejectedBlock
+		rejectReason, ok := <-clGw.RejectedBlock
 		if !ok {
 			return
 		}
 
-		log.Err("share rejected:", reject)
+		log.Err("share rejected:", rejectReason)
+
+		// Get the next share ID from FIFO queue
+		shareID, ok := <-pendingShareQueue
+		if !ok {
+			log.Warn("pendingShareQueue closed")
+			return
+		}
+
+		// Send rejection to the waiting miner
+		if pending := shareTracker.GetPendingShare(shareID); pending != nil {
+			log.Debugf("Matched rejected share %s to pending share", shareID)
+			pending.ResponseChan <- ShareResult{
+				Accepted: false,
+				Error: &stratum.Error{
+					Code:    -1,
+					Message: "rejected by pool: " + rejectReason,
+				},
+			}
+		} else {
+			log.Warnf("Received reject for unknown or expired share: %s", shareID)
+		}
 	}
 }

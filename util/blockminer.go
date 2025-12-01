@@ -106,9 +106,9 @@ func (b *BlockMiner) GenerateExtraNonce() {
 
 }
 
-// returns true if the first 28 bytes of the extra nonces match
+// returns true if all 32 bytes of the extra nonces match
 func ValidateExtraNonces(a, b [32]byte) bool {
-	return bytes.Equal(a[:32-4], b[:32-4])
+	return bytes.Equal(a[:], b[:])
 }
 
 // GETTER methods
