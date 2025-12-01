@@ -4,8 +4,10 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
+	"strconv"
 	"strings"
 	"time"
+	"xelis-mining-proxy/log"
 )
 
 func RemovePort(s string) string {
@@ -49,4 +51,22 @@ func AssertHex(h string) []byte {
 		panic(err)
 	}
 	return data
+}
+
+// xel/v1 -> xel/0
+// xel/v2 -> xel/1
+// xel/v3 -> xel/3
+func AlgorithmNodeToStratum(alg string) string {
+	tmp, _ := strings.CutPrefix(alg, "xel/v")
+	version, err := strconv.ParseInt(tmp, 10, 64)
+	if err != nil {
+		log.Warn("failed to parse version from algorithm", alg, "defaulting to xel/0")
+		version = 0
+	} else {
+		log.Debugf("parsed version %d from algorithm %s", version, alg)
+		version = version - 1
+	}
+
+	algorithm := "xel/" + strconv.FormatInt(version, 10)
+	return algorithm
 }

@@ -448,7 +448,7 @@ func (c *StratumConn) SendJob(bm util.BlockMiner, jobid [16]byte, job Job) error
 
 	c.LastOutID++
 
-	algorithm := strings.ReplaceAll(job.Algorithm, "v", "")
+	algorithm := util.AlgorithmNodeToStratum(job.Algorithm)
 
 	return c.WriteJSON(stratum.RequestOut{
 		Id:     c.LastOutID,
