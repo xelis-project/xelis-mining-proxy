@@ -9,7 +9,7 @@ import (
 	"xelis-mining-proxy/util"
 )
 
-const VERSION = "1.0.1"
+const VERSION = "1.1.0"
 
 // Job is a fast & efficient struct used for storing a job in memory
 type Job struct {

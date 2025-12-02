@@ -438,7 +438,7 @@ func (c *StratumConn) SendJob(bm util.BlockMiner, jobid [16]byte, job Job) error
 		Method: "mining.set_extranonce",
 		Params: []any{
 			hex.EncodeToString(xn[:]),
-			32,
+			len(xn),
 		},
 	})
 
